@@ -1,6 +1,7 @@
 #include "triton/Analysis/Utility.h"
 
 #include <deque>
+#include <iostream>
 
 #include "mlir/Analysis/DataFlow/ConstantPropagationAnalysis.h"
 #include "mlir/Analysis/DataFlow/DeadCodeAnalysis.h"
@@ -70,6 +71,9 @@ unsigned ReduceOpHelper::getThreadOffsetOnReductionAxis() {
 
   unsigned threadOffset = 1;
   if (auto sliceLayout = mlir::dyn_cast<SliceEncodingAttr>(srcLayout)) {
+    llvm::outs() << "\n[debug] In getThreadOffsetOnReductionAxis: SliceLayout: ";
+    sliceLayout.printStripped(llvm::outs()); 
+    llvm::outs() << "\n";
     auto parentLayout = sliceLayout.getParent();
     auto threadsPerWarp = getThreadsPerWarp(parentLayout);
     threadOffset = threadsPerWarp[sliceLayout.getDim()];
@@ -82,6 +86,8 @@ unsigned ReduceOpHelper::getThreadOffsetOnReductionAxis() {
       threadOffset *= threadsPerWarp[order[i]];
     }
   }
+  llvm::outs() << "[debug] In getThreadOffsetOnReductionAxis: threadOffset: ";
+  llvm::outs() << threadOffset << "\n";
   return threadOffset;
 }
 
