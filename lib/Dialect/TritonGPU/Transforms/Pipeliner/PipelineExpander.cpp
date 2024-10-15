@@ -247,6 +247,10 @@ bool LoopPipelinerInternal::verifySchedule() {
       if (it == unrolledCyles.end())
         continue;
       int64_t producerCycle = it->second;
+      LDBG("consumer: " << *consumer << " consumerCycle: " << consumerCycle);
+      LDBG("producer: " << *producer << " producerCycle: " << producerCycle);
+      LDBG("distance: " << distance);
+      LDBG("numCylesPerIter: " << numCylesPerIter);      
       if (consumerCycle < producerCycle - numCylesPerIter * distance) {
         consumer->emitError("operation scheduled before its operands");
         return false;
