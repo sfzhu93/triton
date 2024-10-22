@@ -157,6 +157,7 @@ bool LoopPipelinerInternal::initializeLoopInfo(
     maxStage = std::max(maxStage, opSchedule.second);
     stages[opSchedule.first] = opSchedule.second;
     opOrder.push_back(opSchedule.first);
+    LDBG("adding opSchedule: " << *opSchedule.first << " -> stage: " << opSchedule.second);
   }
 
   // All operations need to have a stage.
