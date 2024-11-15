@@ -248,7 +248,10 @@ bool LoopPipelinerInternal::verifySchedule() {
         continue;
       int64_t producerCycle = it->second;
       if (consumerCycle < producerCycle - numCylesPerIter * distance) {
-        consumer->emitError("operation scheduled before its operands");
+        LDBG("Invalid schedule: " << *consumer << " is scheduled before "
+               << *producer << " with a distance of " << distance << "\n");
+        consumer->emitError("This variable use is scheduled before it is defined.");
+        producer->emitError() << "(The variable is defined here.)";
         return false;
       }
     }

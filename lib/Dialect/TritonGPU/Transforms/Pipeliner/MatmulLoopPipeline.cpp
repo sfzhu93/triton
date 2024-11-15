@@ -687,8 +687,11 @@ static void scheduleDistanceOneDependencies(scf::ForOp forOp,
   auto getNestedOperands = [](Operation *op) -> SmallVector<Value> {
     SmallVector<Value> operands;
     op->walk([&](Operation *nestedOp) {
+      LDBG("  - walking nestedOp: " << *nestedOp << "\n");
       for (Value operand : nestedOp->getOperands()) {
+        LDBG("    - operand: " << operand << "\n");
         if (operand.getParentBlock()->getParentOp()->isAncestor(nestedOp))
+          LDBG("      - adding operand\n");
           operands.push_back(operand);
       }
     });
@@ -721,6 +724,11 @@ static void scheduleDistanceOneDependencies(scf::ForOp forOp,
               if (dist1Cluster.count(&cluster) == 0) {
                 dist1Cluster[&cluster] = schedule.clusters.newBefore(cluster);
               }
+              LDBG("  - adding distance 1 dependency: \n");
+              LDBG("    - op: " << op << "\n");
+              LDBG("    - nested operand: " << operand << "\n");
+              LDBG("    - yieldOp: " << *yieldOp << "\n");
+              LDBG("    - defOp: " << *defOp << "\n");
               schedule.insertIfAbsent(defOp, stage + 1, dist1Cluster[&cluster]);
               schedule.insertDepsOfOp(defOp, stage + 1, dist1Cluster[&cluster],
                                       true);
