@@ -22,7 +22,7 @@ namespace gpu {
 namespace {
 
 // Get the highest version supported for the hardware and the dot.
-static int getMMAVersionSafe(int computeCapability, DotOp op) {
+static int getMMAVersionSafe(int computeCapability, DotOp op, bool emitPerformanceWarning) {
   // List supported mma version in order of preference.
   SmallVector<int> versionsSupported;
   if (computeCapability < 75) {
@@ -37,7 +37,7 @@ static int getMMAVersionSafe(int computeCapability, DotOp op) {
   for (int baseVersion : versionsSupported) {
     if (supportMMA(op, baseVersion))
       return baseVersion;
-    if (baseVersion == 3)
+    if (baseVersion == 3 && emitPerformanceWarning)
       op.emitRemark() << "Warning: can't use MMA V3 for the dot op";
   }
   return 0;
@@ -181,6 +181,7 @@ getWarpsPerTile(DotOp dotOp, const ArrayRef<int64_t> shape, int version,
 
 class BlockedToMMA : public mlir::OpRewritePattern<DotOp> {
   int computeCapability;
+  bool emitPerformanceWarning = false;
   mutable llvm::DenseMap<Operation *, unsigned> dotOpInstNs;
 
   static bool bwdFilter(Operation *op) {
@@ -225,8 +226,8 @@ class BlockedToMMA : public mlir::OpRewritePattern<DotOp> {
   }
 
 public:
-  BlockedToMMA(mlir::MLIRContext *context, int computeCapability)
-      : OpRewritePattern<DotOp>(context), computeCapability(computeCapability) {
+  BlockedToMMA(mlir::MLIRContext *context, int computeCapability, bool emitPerformanceWarning)
+      : OpRewritePattern<DotOp>(context), computeCapability(computeCapability), emitPerformanceWarning(emitPerformanceWarning) {
   }
 
   mlir::LogicalResult
@@ -252,7 +253,8 @@ public:
     int numWarps = TritonGPUDialect::getNumWarps(mod);
     auto CTALayout = getCTALayout(oldRetType.getEncoding());
 
-    int versionMajor = getMMAVersionSafe(computeCapability, dotOp);
+    int versionMajor = getMMAVersionSafe(computeCapability, dotOp, emitPerformanceWarning);
+
     if (!(versionMajor >= 1 && versionMajor <= 3))
       return failure();
 
@@ -364,11 +366,12 @@ static void decomposeMixedModeDotOp(ModuleOp mod, int computeCapability) {
 class DecomposeScaledBlocked
     : public mlir::OpRewritePattern<triton::DotScaledOp> {
   int computeCapability;
-
+  bool emitPerformanceWarning = false;
 public:
-  DecomposeScaledBlocked(mlir::MLIRContext *context, int computeCapability)
+  DecomposeScaledBlocked(mlir::MLIRContext *context, int computeCapability, bool enablePerformanceWarning)
       : mlir::OpRewritePattern<triton::DotScaledOp>(context),
-        computeCapability(computeCapability) {}
+        computeCapability(computeCapability),
+        emitPerformanceWarning(enablePerformanceWarning) {}
 
   mlir::LogicalResult
   matchAndRewrite(triton::DotScaledOp scaledDotOp,
@@ -722,13 +725,13 @@ public:
   void runOnOperation() override {
     MLIRContext *context = &getContext();
     ModuleOp m = getOperation();
-
+    
     auto computeCapability = getNVIDIAComputeCapability(m);
     transposeDots(m);
 
     mlir::RewritePatternSet patterns(context);
     patterns.add<BlockedToMMA, DecomposeScaledBlocked>(context,
-                                                       computeCapability);
+                                                       computeCapability, enableMlirRemarks);
     if (applyPatternsAndFoldGreedily(m, std::move(patterns)).failed()) {
       signalPassFailure();
     }

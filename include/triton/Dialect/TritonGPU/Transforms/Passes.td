@@ -19,7 +19,9 @@ def TritonGPUPipeline : Pass<"tritongpu-pipeline", "mlir::ModuleOp"> {
   let options = [
     Option<"numStages", "num-stages",
            "int32_t", /*default*/"3",
-           "number of pipeline stages">
+           "number of pipeline stages">,
+    Option<"enableMlirRemarks", "enable-mlir-remarks", "bool", /*default*/"false",
+           "enables the performance warnings that are emitted as remarks. Use MLIR_ENABLE_REMARK on Python JIT compilations.">
   ];
 }
 
@@ -70,6 +72,9 @@ def TritonGPUAccelerateMatmul : Pass<"tritongpu-accelerate-matmul", "mlir::Modul
   let dependentDialects = ["mlir::triton::gpu::TritonGPUDialect",
                            "mlir::triton::nvidia_gpu::TritonNvidiaGPUDialect",
                            "mlir::triton::TritonDialect"];
+  let options = [Option<"enableMlirRemarks", "enable-mlir-remarks", "bool", /*default*/"false",
+           "enables the performance warnings that are emitted as remarks. Use MLIR_ENABLE_REMARK on Python JIT compilations.">];
+
 }
 
 def TritonGPUOptimizeDotOperands : Pass<"tritongpu-optimize-dot-operands", "mlir::ModuleOp"> {

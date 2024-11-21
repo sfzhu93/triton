@@ -129,9 +129,10 @@ std::string getRegisterSizeCode(int size, bool is_float) {
 // Contains some helper functions for both Load and Store conversions.
 struct LoadStoreConversionBase {
   explicit LoadStoreConversionBase(const NVIDIA::TargetInfo &targetInfo,
-                                   ModuleAxisInfoAnalysis &axisAnalysisPass)
-      : targetInfo(targetInfo), axisAnalysisPass(axisAnalysisPass) {}
-
+                                   ModuleAxisInfoAnalysis &axisAnalysisPass,
+                                   bool emitPerformanceWarning = false)
+      : targetInfo(targetInfo), axisAnalysisPass(axisAnalysisPass), emitPerformanceWarning(emitPerformanceWarning) {}
+  bool emitPerformanceWarning;
   unsigned getContiguity(Value ptr) const {
     auto tensorTy = dyn_cast<RankedTensorType>(ptr.getType());
     if (!tensorTy)
@@ -165,9 +166,11 @@ struct LoadOpConversion : public ConvertOpToLLVMPattern<triton::LoadOp>,
   LoadOpConversion(LLVMTypeConverter &converter,
                    const NVIDIA::TargetInfo &targetInfo,
                    ModuleAxisInfoAnalysis &axisAnalysisPass,
-                   PatternBenefit benefit)
+                   PatternBenefit benefit,
+                   bool emitPerformanceWarning
+                   )
       : ConvertOpToLLVMPattern<triton::LoadOp>(converter, benefit),
-        LoadStoreConversionBase(targetInfo, axisAnalysisPass) {}
+        LoadStoreConversionBase(targetInfo, axisAnalysisPass, emitPerformanceWarning){}
 
   LogicalResult
   matchAndRewrite(triton::LoadOp op, OpAdaptor adaptor,
@@ -202,7 +205,7 @@ struct LoadOpConversion : public ConvertOpToLLVMPattern<triton::LoadOp>,
       LLVM_DEBUG(llvm::dbgs() << " vec = " << vec << '\n');
     }
 
-    if (vec == 1 && numElems > 1) {
+    if (vec == 1 && numElems > 1 && emitPerformanceWarning) {
       int maskValue = !llMask ? -1 : getMaskAlignment(mask);
       op->emitRemark() << "Warning: vectorization fails vec = " << vec
                        << " origin vec = " << vecOrig
@@ -389,10 +392,11 @@ struct StoreOpConversion : public ConvertOpToLLVMPattern<triton::StoreOp>,
   StoreOpConversion(LLVMTypeConverter &converter,
                     const NVIDIA::TargetInfo &targetInfo,
                     ModuleAxisInfoAnalysis &axisAnalysisPass,
-                    PatternBenefit benefit)
+                    PatternBenefit benefit,
+                    bool emitPerformanceWarning)
       : ConvertOpToLLVMPattern<triton::StoreOp>(converter, benefit),
-        LoadStoreConversionBase(targetInfo, axisAnalysisPass) {}
-
+        LoadStoreConversionBase(targetInfo, axisAnalysisPass, emitPerformanceWarning){}
+  
   LogicalResult
   matchAndRewrite(triton::StoreOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
@@ -429,7 +433,7 @@ struct StoreOpConversion : public ConvertOpToLLVMPattern<triton::StoreOp>,
       vec = std::min(vec, maskAlign);
     }
 
-    if (vec == 1 && elemsPerThread > 1) {
+    if (vec == 1 && elemsPerThread > 1 && emitPerformanceWarning) {
       int mask = !llMask ? -1 : getMaskAlignment(op.getMask());
       op->emitRemark() << "Warning: vectorization fails vec = " << vec
                        << " origin vec = " << vecOrig
@@ -534,9 +538,9 @@ struct AtomicCASOpConversion
   AtomicCASOpConversion(LLVMTypeConverter &converter,
                         const NVIDIA::TargetInfo &targetInfo,
                         ModuleAxisInfoAnalysis &axisAnalysisPass,
-                        PatternBenefit benefit)
+                        PatternBenefit benefit, bool emitPerformanceWarning)
       : ConvertOpToLLVMPattern<triton::AtomicCASOp>(converter, benefit),
-        LoadStoreConversionBase(targetInfo, axisAnalysisPass) {}
+        LoadStoreConversionBase(targetInfo, axisAnalysisPass, emitPerformanceWarning) {}
 
   LogicalResult
   matchAndRewrite(triton::AtomicCASOp op, OpAdaptor adaptor,
@@ -572,7 +576,7 @@ struct AtomicCASOpConversion
       vec = std::min<unsigned>(vec, valTy.getElementType().isF16() ? 2 : 1);
     }
 
-    if (vec == 1 && elemsPerThread > 1)
+    if (vec == 1 && elemsPerThread > 1 && emitPerformanceWarning)
       op->emitRemark() << "Warning: vectorization fails vec = " << vec
                        << " origin vec = " << vecOrig
                        << " elemsPerThread = " << elemsPerThread << "\n";
@@ -656,9 +660,10 @@ struct AtomicRMWOpConversion
   AtomicRMWOpConversion(LLVMTypeConverter &converter,
                         const NVIDIA::TargetInfo &targetInfo,
                         ModuleAxisInfoAnalysis &axisAnalysisPass,
-                        PatternBenefit benefit)
+                        PatternBenefit benefit,
+                        bool emitPerformanceWarning)
       : ConvertOpToLLVMPattern<triton::AtomicRMWOp>(converter, benefit),
-        LoadStoreConversionBase(targetInfo, axisAnalysisPass) {}
+        LoadStoreConversionBase(targetInfo, axisAnalysisPass, emitPerformanceWarning) {}
 
   bool supportsVectorized(RMWOp opType, Type elementType) const {
     // vectorized atomics are only supported on hopper,
@@ -731,7 +736,7 @@ struct AtomicRMWOpConversion
     }
     assert((packed == 1 || vec == 1) && "packed or vec must be 1");
 
-    if (vec * packed == 1 && numElems > 1)
+    if (vec * packed == 1 && numElems > 1 && emitPerformanceWarning)
       op->emitRemark() << "Warning: vectorization fails vec = " << vec
                        << " packed = " << packed << " origin vec = " << vecOrig
                        << " numElems = " << numElems;

@@ -33,6 +33,8 @@ def ConvertTritonGPUToLLVM : Pass<"convert-triton-gpu-to-llvm", "mlir::ModuleOp"
         Option<"ptxVersion", "ptx-version",
                "int32_t", /*default*/"80",
                "PTX version">,
+        Option<"enableMlirRemarks", "enable-mlir-remarks", "bool", /*default*/"false",
+               "enables the performance warnings that are emitted as remarks. Use MLIR_ENABLE_REMARK on Python JIT compilations.">       
     ];
 }
 
