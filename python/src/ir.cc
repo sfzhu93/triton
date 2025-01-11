@@ -144,9 +144,9 @@ private:
 // enables emitted MLIR diagnostics to directly reference Python source
 // code. This diagnostic handler supports filtering diagnostic info by
 // severity levels.
-struct TritonSourceMgrDiagnosticHandler
-    : public SourceMgrDiagnosticHandler {
-  TritonSourceMgrDiagnosticHandler(MLIRContext *ctx, DiagnosticSeverity minSeverity)
+struct TritonSourceMgrDiagnosticHandler : public SourceMgrDiagnosticHandler {
+  TritonSourceMgrDiagnosticHandler(MLIRContext *ctx,
+                                   DiagnosticSeverity minSeverity)
       : SourceMgrDiagnosticHandler(sourceMgr, ctx, llvm::errs()) {
     setHandler([this, minSeverity](Diagnostic &diag) {
       auto severity = diag.getSeverity();
@@ -1818,14 +1818,16 @@ void init_triton_ir(py::module &&m) {
         if (haveTiming) {
           self.enableTiming();
         }
-        bool haveRemarks =
-                 ::triton::tools::getBoolEnv("MLIR_ENABLE_REMARK");
+        bool haveRemarks = ::triton::tools::getBoolEnv("MLIR_ENABLE_REMARK");
 
-        DiagnosticSeverity minSeverity = haveRemarks ? DiagnosticSeverity::Remark : DiagnosticSeverity::Error;
-        TritonSourceMgrDiagnosticHandler diagHandler(mod.getContext(), minSeverity);
+        DiagnosticSeverity minSeverity = haveRemarks
+                                             ? DiagnosticSeverity::Remark
+                                             : DiagnosticSeverity::Error;
+        TritonSourceMgrDiagnosticHandler diagHandler(mod.getContext(),
+                                                     minSeverity);
 
         bool haveDiagnostics =
-                 ::triton::tools::getBoolEnv("MLIR_ENABLE_DIAGNOSTICS");
+            ::triton::tools::getBoolEnv("MLIR_ENABLE_DIAGNOSTICS");
         if (!haveDiagnostics) {
           mod.getContext()->printOpOnDiagnostic(false);
         }
