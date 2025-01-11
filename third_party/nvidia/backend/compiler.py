@@ -291,6 +291,7 @@ class CUDABackend(BaseBackend):
         pm = ir.pass_manager(mod.context)
         pm.enable_debug()
         # Set up Diagnostic
+        # TODO: use https://github.com/llvm/llvm-project/pull/117669/files to control severity level
         if os.environ.get("MLIR_ENABLE_REMARK", "0") == "1":
             srcMgr = llvm.source_mgr()
             diag = ir.source_mgr_diag(srcMgr, mod.context)
