@@ -249,6 +249,8 @@ bool LoopPipelinerInternal::verifySchedule() {
       int64_t producerCycle = it->second;
       if (consumerCycle < producerCycle - numCylesPerIter * distance) {
         consumer->emitError("operation scheduled before its operands");
+        consumer->emitWarning() << "test warning";
+        consumer->emitRemark() << "consumer cycle: " << consumerCycle;
         return false;
       }
     }
