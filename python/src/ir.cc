@@ -1818,11 +1818,18 @@ void init_triton_ir(py::module &&m) {
         if (haveTiming) {
           self.enableTiming();
         }
-        bool haveRemarks = ::triton::tools::getBoolEnv("MLIR_ENABLE_REMARK");
+        DiagnosticSeverity minSeverity = DiagnosticSeverity::Error;
+        bool haveWarnings = ::triton::tools::getBoolEnv("MLIR_ENABLE_WARNING");
 
-        DiagnosticSeverity minSeverity = haveRemarks
-                                             ? DiagnosticSeverity::Remark
-                                             : DiagnosticSeverity::Error;
+        if (haveWarnings) {
+          minSeverity = DiagnosticSeverity::Warning;
+        }
+
+        bool haveRemarks = ::triton::tools::getBoolEnv("MLIR_ENABLE_REMARK");
+        if (haveRemarks) {
+          minSeverity = DiagnosticSeverity::Remark;
+        }
+
         TritonSourceMgrDiagnosticHandler diagHandler(mod.getContext(),
                                                      minSeverity);
 
