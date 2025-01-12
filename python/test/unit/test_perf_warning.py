@@ -15,6 +15,7 @@ def enable_remark_context():
     finally:
         os.environ["MLIR_ENABLE_REMARK"] = "0"
 
+
 @contextmanager
 def enable_warning_context():
     try:
@@ -79,26 +80,25 @@ def test_mma_remark(capfd, fresh_triton_cache):
         tl.store(c_block_ptr, c)
 
     signature = {
-                    "a_ptr": "*fp32",
-                    "b_ptr": "*fp32",
-                    "c_ptr": "*fp32",
-                    "M": "i32",
-                    "N": "i32",
-                    "K": "i32",
-                    "stride_am": "i32",
-                    "stride_ak": "i32",
-                    "stride_bk": "i32",
-                    "stride_bn": "i32",
-                    "stride_cm": "i32",
-                    "stride_cn": "i32",
-                }
+        "a_ptr": "*fp32",
+        "b_ptr": "*fp32",
+        "c_ptr": "*fp32",
+        "M": "i32",
+        "N": "i32",
+        "K": "i32",
+        "stride_am": "i32",
+        "stride_ak": "i32",
+        "stride_bk": "i32",
+        "stride_bn": "i32",
+        "stride_cm": "i32",
+        "stride_cn": "i32",
+    }
     with enable_remark_context():
-        triton.compile(
-            triton.compiler.ASTSource(
-                fn=matmul_kernel,
-                signature=signature,
-                constexprs={},
-            ))
+        triton.compile(triton.compiler.ASTSource(
+            fn=matmul_kernel,
+            signature=signature,
+            constexprs={},
+        ))
     captured = capfd.readouterr()
 
     assert ("warning: can't use MMA V3 for the dot op" in captured.err), "expect MMA V3 remark"
@@ -131,7 +131,7 @@ def test_remark_vectorization(capfd, fresh_triton_cache):
         tl.store(out_ptr0 + (x4), tmp22, None)
 
     XBLOCK = 1024
-    
+
     astsource_args = {
         "fn": ldst_vec,
         "signature": {
@@ -145,14 +145,15 @@ def test_remark_vectorization(capfd, fresh_triton_cache):
         "constexprs": {"XBLOCK": XBLOCK},
     }
     with enable_remark_context():
-    
+
         triton.compile(
             triton.compiler.ASTSource(**astsource_args),
             options={"num_warps": 1},
         )
 
     _, err = capfd.readouterr()
-    assert ("warning: Vectorization fails and expect suboptimal performance." in err), "expect vectorization failure warning"
+    assert ("warning: Vectorization fails and expect suboptimal performance."
+            in err), "expect vectorization failure warning"
     assert "note: see current operation:" not in err
     assert "The following information may help Triton developers" in err
 
@@ -164,9 +165,11 @@ def test_remark_vectorization(capfd, fresh_triton_cache):
 
     _, err = capfd.readouterr()
 
-    assert ("warning: Vectorization fails and expect suboptimal performance." in err), "expect vectorization failure warning"
+    assert ("warning: Vectorization fails and expect suboptimal performance."
+            in err), "expect vectorization failure warning"
     assert "note: see current operation:" not in err
     assert "remark: The following information may help Triton developers" not in err
+
 
 def test_remark_swp_op_before_operands(capfd, fresh_triton_cache):
 

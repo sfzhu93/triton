@@ -26,8 +26,11 @@ using ::mlir::triton::gpu::SharedEncodingAttr;
 
 namespace {
 
-const char *kVectorizationFailureWarning = "Vectorization fails and expect suboptimal performance.";
-const char *kVectorizationFailureRemark = "The following information may help Triton developers to debug the vectorization failure:";
+const char *kVectorizationFailureWarning =
+    "Vectorization fails and expect suboptimal performance.";
+const char *kVectorizationFailureRemark =
+    "The following information may help Triton developers to debug the "
+    "vectorization failure:";
 
 llvm::MapVector<StringAttr, int32_t> getAllFreeVarMasks(MLIRContext *ctx) {
   // Mask where all elements are redundant
@@ -200,8 +203,7 @@ struct LoadOpConversion : public ConvertOpToLLVMPattern<triton::LoadOp>,
       int maskValue = !llMask ? -1 : getMaskAlignment(mask);
       op->emitWarning() << kVectorizationFailureWarning;
       op->emitRemark() << kVectorizationFailureRemark << "\n"
-                       << "vec = " << vec
-                       << " origin vec = " << vecOrig
+                       << "vec = " << vec << " origin vec = " << vecOrig
                        << " numElems = " << numElems << " mask is " << maskValue
                        << "\n";
     }
@@ -442,8 +444,7 @@ struct StoreOpConversion : public ConvertOpToLLVMPattern<triton::StoreOp>,
       int mask = !llMask ? -1 : getMaskAlignment(op.getMask());
       op->emitWarning() << kVectorizationFailureWarning;
       op->emitRemark() << kVectorizationFailureRemark << "\n"
-                       << "vec = " << vec
-                       << " origin vec = " << vecOrig
+                       << "vec = " << vec << " origin vec = " << vecOrig
                        << " elemsPerThread = " << elemsPerThread << " mask is "
                        << mask << "\n";
     }
@@ -594,8 +595,7 @@ struct AtomicCASOpConversion
     if (vec == 1 && elemsPerThread > 1) {
       op->emitWarning() << kVectorizationFailureWarning;
       op->emitRemark() << kVectorizationFailureRemark << "\n"
-                       << "vec = " << vec
-                       << " origin vec = " << vecOrig
+                       << "vec = " << vec << " origin vec = " << vecOrig
                        << " elemsPerThread = " << elemsPerThread << "\n";
     }
     auto freeVarMasks = getFreeVariableMasks(op.getPtr().getType());
@@ -768,8 +768,8 @@ struct AtomicRMWOpConversion
     if (vec * packed == 1 && numElems > 1) {
       op->emitWarning() << kVectorizationFailureWarning;
       op->emitRemark() << kVectorizationFailureRemark << "\n"
-                       << "vec = " << vec
-                       << " packed = " << packed << " origin vec = " << vecOrig
+                       << "vec = " << vec << " packed = " << packed
+                       << " origin vec = " << vecOrig
                        << " numElems = " << numElems;
     }
     auto freeVarMasks = getFreeVariableMasks(ptr.getType());
