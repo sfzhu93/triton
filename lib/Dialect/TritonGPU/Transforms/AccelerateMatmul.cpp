@@ -39,7 +39,7 @@ static int getMMAVersionSafe(int computeCapability, DotOp op) {
     if (supportMMA(op, baseVersion))
       return baseVersion;
     if (baseVersion == 3)
-      op.emitRemark() << "Warning: can't use MMA V3 for the dot op";
+      op.emitWarning() << "can't use MMA V3 for the dot op";
   }
   return 0;
 }

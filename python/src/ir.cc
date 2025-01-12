@@ -140,6 +140,42 @@ private:
   bool lineInfoEnabled = !triton::tools::getBoolEnv("TRITON_DISABLE_LINE_INFO");
 };
 
+// Run the pass manager under a source manager diagnostic handler, which
+// enables emitted MLIR diagnostics to directly reference Python source
+// code. This diagnostic handler supports filtering diagnostic info by
+// severity levels.
+struct TritonSourceMgrDiagnosticHandler : public SourceMgrDiagnosticHandler {
+  TritonSourceMgrDiagnosticHandler(MLIRContext *ctx,
+                                   DiagnosticSeverity minSeverity)
+      : SourceMgrDiagnosticHandler(sourceMgr, ctx, llvm::errs()) {
+    setHandler([this, minSeverity](Diagnostic &diag) {
+      auto severity = diag.getSeverity();
+      switch (severity) {
+      case DiagnosticSeverity::Error:
+        break;
+      case DiagnosticSeverity::Warning:
+        if (minSeverity == DiagnosticSeverity::Error)
+          return success();
+        break;
+      case DiagnosticSeverity::Remark:
+        if (minSeverity == DiagnosticSeverity::Error ||
+            minSeverity == DiagnosticSeverity::Warning)
+          return success();
+        break;
+      case DiagnosticSeverity::Note:
+        // notes are handled somewhere else.
+        return failure();
+      default:
+        llvm_unreachable("Unknown diagnostic severity");
+      }
+      emitDiagnostic(diag);
+      return success();
+    });
+  }
+
+  llvm::SourceMgr sourceMgr;
+};
+
 std::string locationToString(Location loc) {
   std::string str;
   llvm::raw_string_ostream os(str);
@@ -1782,25 +1818,26 @@ void init_triton_ir(py::module &&m) {
         if (haveTiming) {
           self.enableTiming();
         }
+        DiagnosticSeverity minSeverity = DiagnosticSeverity::Error;
+        bool haveWarnings = ::triton::tools::getBoolEnv("MLIR_ENABLE_WARNING");
 
-        // Run the pass manager under a source manager diagnostic handler, which
-        // enables emitted MLIR diagnostics to directly reference Python source
-        // code. This diagnostic handler will only filter for errors.
-        struct SourceMgrErrorDiagnosticHandler
-            : public SourceMgrDiagnosticHandler {
-          SourceMgrErrorDiagnosticHandler(MLIRContext *ctx)
-              : SourceMgrDiagnosticHandler(sourceMgr, ctx, llvm::errs()) {
-            setHandler([this](Diagnostic &diag) {
-              if (diag.getSeverity() != DiagnosticSeverity::Error)
-                return failure();
-              emitDiagnostic(diag);
-              return success();
-            });
-          }
+        if (haveWarnings) {
+          minSeverity = DiagnosticSeverity::Warning;
+        }
 
-          llvm::SourceMgr sourceMgr;
-        };
-        SourceMgrErrorDiagnosticHandler diagHandler(mod.getContext());
+        bool haveRemarks = ::triton::tools::getBoolEnv("MLIR_ENABLE_REMARK");
+        if (haveRemarks) {
+          minSeverity = DiagnosticSeverity::Remark;
+        }
+
+        TritonSourceMgrDiagnosticHandler diagHandler(mod.getContext(),
+                                                     minSeverity);
+
+        bool haveDiagnostics =
+            ::triton::tools::getBoolEnv("MLIR_ENABLE_DIAGNOSTICS");
+        if (!haveDiagnostics) {
+          mod.getContext()->printOpOnDiagnostic(false);
+        }
 
         if (failed(self.run(mod.getOperation())))
           throw std::runtime_error("PassManager::run failed");
