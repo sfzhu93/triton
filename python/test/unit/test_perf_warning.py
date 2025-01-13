@@ -16,8 +16,13 @@ def enable_remark_context():
         os.environ["MLIR_ENABLE_REMARK"] = "0"
 
 
-def is_perf_warning_enabled():
-    return os.environ.get("MLIR_ENABLE_REMARK", "0") == "1"
+@contextmanager
+def enable_warning_context():
+    try:
+        os.environ["MLIR_ENABLE_WARNING"] = "1"
+        yield
+    finally:
+        os.environ["MLIR_ENABLE_WARNING"] = "0"
 
 
 def is_cuda():
@@ -74,30 +79,30 @@ def test_mma_remark(capfd, fresh_triton_cache):
         c = tl.dot(a, b)
         tl.store(c_block_ptr, c)
 
+    signature = {
+        "a_ptr": "*fp32",
+        "b_ptr": "*fp32",
+        "c_ptr": "*fp32",
+        "M": "i32",
+        "N": "i32",
+        "K": "i32",
+        "stride_am": "i32",
+        "stride_ak": "i32",
+        "stride_bk": "i32",
+        "stride_bn": "i32",
+        "stride_cm": "i32",
+        "stride_cn": "i32",
+    }
     with enable_remark_context():
-        triton.compile(
-            triton.compiler.ASTSource(
-                fn=matmul_kernel,
-                signature={
-                    "a_ptr": "*fp32",
-                    "b_ptr": "*fp32",
-                    "c_ptr": "*fp32",
-                    "M": "i32",
-                    "N": "i32",
-                    "K": "i32",
-                    "stride_am": "i32",
-                    "stride_ak": "i32",
-                    "stride_bk": "i32",
-                    "stride_bn": "i32",
-                    "stride_cm": "i32",
-                    "stride_cn": "i32",
-                },
-                constexprs={},
-            ))
+        triton.compile(triton.compiler.ASTSource(
+            fn=matmul_kernel,
+            signature=signature,
+            constexprs={},
+        ))
     captured = capfd.readouterr()
 
-    assert ("remark: Warning: can't use MMA V3 for the dot op" in captured.err), "expect MMA V3 remark"
-    assert "note: see current operation:" in captured.err
+    assert ("warning: can't use MMA V3 for the dot op" in captured.err), "expect MMA V3 remark"
+    assert "note: see current operation:" not in captured.err
 
 
 def test_remark_vectorization(capfd, fresh_triton_cache):
@@ -126,25 +131,44 @@ def test_remark_vectorization(capfd, fresh_triton_cache):
         tl.store(out_ptr0 + (x4), tmp22, None)
 
     XBLOCK = 1024
+
+    astsource_args = {
+        "fn": ldst_vec,
+        "signature": {
+            "in_ptr0": "*i64",
+            "in_ptr1": "*i64",
+            "in_ptr2": "*fp16",
+            "in_ptr3": "*fp32",
+            "out_ptr0": "*fp16",
+            "XBLOCK": "constexpr",
+        },
+        "constexprs": {"XBLOCK": XBLOCK},
+    }
     with enable_remark_context():
+
         triton.compile(
-            triton.compiler.ASTSource(
-                fn=ldst_vec,
-                signature={
-                    "in_ptr0": "*i64",
-                    "in_ptr1": "*i64",
-                    "in_ptr2": "*fp16",
-                    "in_ptr3": "*fp32",
-                    "out_ptr0": "*fp16",
-                    "XBLOCK": "constexpr",
-                },
-                constexprs={"XBLOCK": XBLOCK},
-            ),
+            triton.compiler.ASTSource(**astsource_args),
             options={"num_warps": 1},
         )
 
     _, err = capfd.readouterr()
-    assert ("remark: Warning: vectorization fails" in err), "expect vectorization failure remark"
+    assert ("warning: Vectorization fails and expect suboptimal performance."
+            in err), "expect vectorization failure warning"
+    assert "note: see current operation:" not in err
+    assert "The following information may help Triton developers" in err
+
+    with enable_warning_context():
+        triton.compile(
+            triton.compiler.ASTSource(**astsource_args),
+            options={"num_warps": 1},
+        )
+
+    _, err = capfd.readouterr()
+
+    assert ("warning: Vectorization fails and expect suboptimal performance."
+            in err), "expect vectorization failure warning"
+    assert "note: see current operation:" not in err
+    assert "remark: The following information may help Triton developers" not in err
 
 
 def test_remark_swp_op_before_operands(capfd, fresh_triton_cache):
