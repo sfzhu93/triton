@@ -723,6 +723,22 @@ bool cvtNeedsWarpShuffle(RankedTensorType srcTy, RankedTensorType dstTy) {
          llvm::SmallVector<StringAttr, 2>{kRegister, kLane};
 }
 
+bool isMfmaToDotShortcut(RankedTensorType srcTy, RankedTensorType dstTy) {
+  auto mfmaLayout = dyn_cast<AMDMfmaEncodingAttr>(srcTy.getEncoding());
+  auto dotOperandLayout = dyn_cast<DotOperandEncodingAttr>(dstTy.getEncoding());
+  if (mfmaLayout == nullptr || dotOperandLayout == nullptr)
+    return false;
+  // TODO: Remove the restriction on the warpsPerCTA once chain dot testing is
+  // improved. In addition, we can enable this shortcut for regular MFMA
+  // layout when opIdx == 1.
+  return mfmaLayout.getWarpsPerCTA()[1] == 1 &&
+         dotOperandLayout.getOpIdx() == 0 && mfmaLayout.getIsTransposed() &&
+         dotOperandLayout.getKWidth() == getContigPerThread(mfmaLayout)[1] &&
+         dotOperandLayout.getParent() == mfmaLayout &&
+         (mfmaLayout.getMDim() == 32 || mfmaLayout.getMDim() == 16) &&
+         (srcTy.getElementType().isF16() || srcTy.getElementType().isBF16());
+}
+
 bool cvtNeedsSharedMemory(RankedTensorType srcTy, RankedTensorType dstTy) {
   // TODO(jlebar): Remove these special cases (`isBlockedToDotShortcut` and
   // `isMfmaToDotShortcut`) once they're fully subsumed by the linear-layout

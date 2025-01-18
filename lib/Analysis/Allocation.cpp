@@ -69,6 +69,27 @@ static SmallVector<unsigned> getRepShapeForAtomic(Value result) {
   return smemShape;
 }
 
+static std::pair<SmallVector<unsigned>, SmallVector<unsigned>>
+getCvtOrder(Attribute srcLayout, Attribute dstLayout) {
+  auto srcMmaLayout = mlir::dyn_cast<gpu::NvidiaMmaEncodingAttr>(srcLayout);
+  auto srcDotLayout = mlir::dyn_cast<gpu::DotOperandEncodingAttr>(srcLayout);
+  auto dstMmaLayout = mlir::dyn_cast<gpu::NvidiaMmaEncodingAttr>(dstLayout);
+  auto dstDotLayout = mlir::dyn_cast<gpu::DotOperandEncodingAttr>(dstLayout);
+
+  assert(!(srcMmaLayout && dstMmaLayout && !srcMmaLayout.isAmpere() &&
+           !srcMmaLayout.isHopper()) &&
+         "mma -> mma layout conversion is only supported on Ampere");
+
+  // mma or dot layout does not have an order, so the order depends on the
+  // layout of the other operand.
+  auto inOrd = (srcMmaLayout || srcDotLayout) ? gpu::getOrder(dstLayout)
+                                              : gpu::getOrder(srcLayout);
+  auto outOrd = (dstMmaLayout || dstDotLayout) ? gpu::getOrder(srcLayout)
+                                               : gpu::getOrder(dstLayout);
+
+  return {inOrd, outOrd};
+}
+
 ScratchConfig getScratchConfigForCvt(RankedTensorType srcTy,
                                      RankedTensorType dstTy) {
   // Initialize vector sizes and stride
@@ -80,12 +101,9 @@ ScratchConfig getScratchConfigForCvt(RankedTensorType srcTy,
   Attribute srcLayout = srcTy.getEncoding();
   Attribute dstLayout = dstTy.getEncoding();
 
-  assert(cvtNeedsSharedMemory(srcTy, dstTy));
+  assert(!isMfmaToDotShortcut(srcTy, dstTy));
 
-  const auto &inOrd = gpu::getOrder(srcLayout);
-  const auto &outOrd = gpu::getOrder(dstLayout);
-  scratchConfig.order = outOrd;
-
+  auto [inOrd, outOrd] = getCvtOrder(srcLayout, dstLayout);
   unsigned srcContigPerThread =
       gpu::getUniqueContigPerThread(srcLayout, srcTy.getShape())[inOrd[0]];
   unsigned dstContigPerThread =
@@ -98,21 +116,29 @@ ScratchConfig getScratchConfigForCvt(RankedTensorType srcTy,
                                                : srcContigPerThread;
   scratchConfig.outVec = outOrd[0] != innerDim ? 1 : dstContigPerThread;
 
-  if (mlir::isa<gpu::NvidiaMmaEncodingAttr>(srcLayout) &&
-      mlir::isa<gpu::BlockedEncodingAttr>(dstLayout)) {
-    // when storing from mma layout and loading in blocked layout vectorizing
-    // the load back gives better performance even if there is a
-    // transposition.
-    scratchConfig.outVec = dstContigPerThread;
+  // For conversions to MmaV1 (Nvidia V100), this inVec is hardcoded in the
+  // codegen.
+  if (auto mma = mlir::dyn_cast<gpu::NvidiaMmaEncodingAttr>(srcLayout)) {
+    if (mma.getVersionMajor() == 1) {
+      scratchConfig.inVec = srcContigPerThread;
+    } else if (mlir::isa<gpu::BlockedEncodingAttr>(dstLayout)) {
+      // when storing from mma layout and loading in blocked layout vectorizing
+      // the load back gives better performance even if there is a
+      // transposition.
+      scratchConfig.outVec = dstContigPerThread;
+    }
   }
 
-  // No padding is required if the tensor is 1-D, or if all dimensions except
-  // the first accessed dimension have a size of 1.
-  if (rank <= 1 || product(repShape) == repShape[outOrd[0]])
+  if (rank <= 1)
     return scratchConfig;
-
+  // pad the last dimension
+  auto paddedDim = rank - 1;
+  if (auto dstBlockedLayout = mlir::dyn_cast<gpu::BlockedEncodingAttr>(dstLayout)) {
+    paddedDim = dstBlockedLayout.getOrder()[0];
+  }
   auto paddedSize = std::max(scratchConfig.inVec, scratchConfig.outVec);
-  scratchConfig.paddedRepShape[outOrd[0]] += paddedSize;
+  scratchConfig.paddedRepShape[paddedDim] += paddedSize;
+
   return scratchConfig;
 }
 
