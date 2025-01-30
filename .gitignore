@@ -84,3 +84,6 @@ docs/sg_execution_times.rst
 
 # macOS
 .DS_Store
+
+# Meta internal LSP settings
+/meta_gen_cpp_compile_commands.json
