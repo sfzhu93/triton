@@ -2,6 +2,7 @@
 #define TRITON_ANALYSIS_AXISINFO_H
 
 #include "mlir/Analysis/DataFlow/SparseAnalysis.h"
+#include "llvm/Support/Debug.h"
 #include "llvm/Support/raw_ostream.h"
 
 #include "mlir/Support/LLVM.h"
@@ -9,6 +10,8 @@
 #include "triton/Dialect/Triton/IR/Dialect.h"
 #include "triton/Dialect/Triton/IR/Utility.h"
 #include "triton/Dialect/TritonGPU/IR/Dialect.h"
+#include "llvm/ADT/SmallSet.h"
+
 
 #include <optional>
 #include <type_traits>
@@ -179,7 +182,8 @@ public:
     SetVector<FunctionOpInterface> sortedFuncs(funcs.begin(), funcs.end());
     SymbolTableCollection symbolTable;
     for (auto funcOp : llvm::reverse(sortedFuncs)) {
-      initialize(funcOp);
+      llvm::dbgs() << "Processing " << funcOp->getName() << "\n";
+      initialize(funcOp, operationsReachedTopOnDivisibility);
       funcOp.walk([&](CallOpInterface callOp) {
         auto callee = dyn_cast<FunctionOpInterface>(
             callOp.resolveCallableInTable(&symbolTable));
@@ -205,9 +209,10 @@ public:
   unsigned getPtrContiguity(Value ptr);
   unsigned getPtrAlignment(Value ptr);
   unsigned getMaskAlignment(Value mask);
+  llvm::SmallSet<Operation*, 8> operationsReachedTopOnDivisibility;
 
 private:
-  void initialize(FunctionOpInterface funcOp);
+  void initialize(FunctionOpInterface funcOp, llvm::SmallSet<Operation*, 8> &operationsReachedTopOnDivisibility);
   void update(CallOpInterface callOp, FunctionOpInterface funcOp);
 };
 
